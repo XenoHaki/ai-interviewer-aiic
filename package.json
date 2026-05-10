@@ -1,0 +1,26 @@
+{
+  "name": "aiicproject",
+  "version": "1.0.0",
+  "description": "A simple multimodal-ready AI chat web app.",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "lucide-react": "^1.14.0",
+    "next": "^16.2.6",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.2",
+    "@types/react": "19.2.14",
+    "typescript": "6.0.3"
+  }
+}
