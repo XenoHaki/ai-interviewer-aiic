@@ -20,6 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type PageKey = "home" | "training" | "settings" | "records";
 type PressureLevel = "friendly" | "normal" | "strict";
@@ -46,6 +48,7 @@ type InterviewSettings = {
   english: boolean;
   englishIntro: boolean;
   focus: string;
+  maxRounds: number;
 };
 
 type InterviewRecord = {
@@ -68,16 +71,17 @@ const initialMessages: ChatMessage[] = [
     id: "welcome",
     role: "assistant",
     content:
-      "你好，我是 AI 面试官。请选择训练目标，粘贴你的项目/简历片段，或上传材料后开始模拟面试。我会连续追问并给出反馈。",
+      "同学你好，我是本次夏令营的面试官。请选择训练目标，粘贴你的项目/简历片段，或上传材料后开始模拟面试。我会连续追问并给出反馈。",
   },
 ];
 
 const defaultSettings: InterviewSettings = {
   pressure: "normal",
-  direction: "计算机保研 / 人工智能方向",
+  direction: "多模态NLP",
   english: false,
   englishIntro: false,
   focus: "项目深挖、专业基础、科研潜力",
+  maxRounds: 5,
 };
 
 function createId() {
@@ -92,9 +96,9 @@ function formatBytes(size: number) {
 
 function pressureLabel(value: PressureLevel) {
   return {
-    friendly: "友好引导",
-    normal: "标准复试",
-    strict: "高压追问",
+    friendly: "轻松",
+    normal: "普通",
+    strict: "高压",
   }[value];
 }
 
@@ -104,8 +108,8 @@ function buildContext(settings: InterviewSettings, attachments: Attachment[]) {
     : "本轮用户未上传附件。";
 
   return [
-    `面试官设置：压力程度=${pressureLabel(settings.pressure)}；专业方向=${settings.direction}；是否英语面试=${settings.english ? "是" : "否"}；要求英语自我介绍=${settings.englishIntro ? "是" : "否"}；重点考察=${settings.focus}。`,
-    "你要扮演计算机保研复试面试官。优先连续追问项目细节、专业基础、科研潜力和表达漏洞。",
+    `面试官设置：压力程度=${pressureLabel(settings.pressure)}；专业方向=${settings.direction}；是否英语面试=${settings.english ? "是" : "否"}；要求英语自我介绍=${settings.englishIntro ? "是" : "否"}；追问轮数=${settings.maxRounds ?? 5}；重点考察=${settings.focus}。`,
+    "你是一名计算机学院夏令营保研复试的面试老师。优先连续追问项目细节、专业基础、科研潜力和表达漏洞。",
     "每次回复尽量包含：一个主要追问、简短点评、下一步回答提示。不要一次抛出太多问题。",
     attachmentText,
   ].join("\n");
@@ -165,6 +169,20 @@ export function InterviewApp() {
   useEffect(() => {
     window.localStorage.setItem("aiic-theme", theme);
   }, [theme]);
+
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem("aiic-settings");
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<InterviewSettings>;
+        setSettings((prev) => ({ ...prev, ...parsed }));
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("aiic-settings", JSON.stringify(settings));
+  }, [settings]);
 
   function addFiles(fileList: FileList | File[]) {
     const nextFiles = Array.from(fileList)
@@ -342,6 +360,7 @@ export function InterviewApp() {
             onDrop={handleDrop}
             onFileChange={handleFileChange}
             onInputChange={setInput}
+            onNewInterview={startNewInterview}
             onRemoveAttachment={(id) => setAttachments((current) => current.filter((file) => file.id !== id))}
             onSubmit={handleSubmit}
             onToggleDrag={setIsDragging}
@@ -375,6 +394,23 @@ function HomeView({ onStart }: { onStart: () => void }) {
           开始训练
           <ChevronRight size={18} />
         </button>
+        <div className="feature-cards">
+          <div className="feature-card">
+            <Settings2 size={24} />
+            <strong>可调面试官</strong>
+            <span>自定义压力程度、专业方向和考察重点，模拟不同风格面试官</span>
+          </div>
+          <div className="feature-card">
+            <MessageSquareText size={24} />
+            <strong>AI 追问反馈</strong>
+            <span>连续深入追问项目细节，给出针对性点评和改进建议</span>
+          </div>
+          <div className="feature-card">
+            <Gauge size={24} />
+            <strong>英语面试</strong>
+            <span>支持英文追问与自我介绍练习，提前适应英语面试环境</span>
+          </div>
+        </div>
       </div>
     </section>
   );
@@ -393,12 +429,19 @@ type TrainingViewProps = {
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
   onInputChange: (value: string) => void;
+  onNewInterview: () => void;
   onRemoveAttachment: (id: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onToggleDrag: (value: boolean) => void;
 };
 
 function TrainingView(props: TrainingViewProps) {
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [props.messages, props.isSending]);
+
   return (
     <section
       className={`training-view ${props.isDragging ? "dragging" : ""}`}
@@ -416,10 +459,15 @@ function TrainingView(props: TrainingViewProps) {
           <p className="eyebrow">Interview Training</p>
           <h2>面试训练</h2>
         </div>
-        <button className="ghost-action" type="button" onClick={() => props.fileInputRef.current?.click()}>
-          <Upload size={17} />
-          上传材料
-        </button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button className="ghost-action" type="button" onClick={props.onNewInterview}>
+            新建面试
+          </button>
+          <button className="ghost-action" type="button" onClick={() => props.fileInputRef.current?.click()}>
+            <Upload size={17} />
+            上传材料
+          </button>
+        </div>
       </header>
 
       <div className="chat-shell">
@@ -432,8 +480,8 @@ function TrainingView(props: TrainingViewProps) {
                 <div className="avatar" aria-hidden="true">
                   <Icon size={18} />
                 </div>
-                <div className="message-bubble">
-                  <p>{message.content}</p>
+                <div className={`message-bubble ${isUser ? '' : 'markdown-body'}`}>
+                  {isUser ? <p>{message.content}</p> : <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>}
                   {message.attachments?.length ? (
                     <div className="attachment-row">
                       {message.attachments.map((file) => (
@@ -460,6 +508,7 @@ function TrainingView(props: TrainingViewProps) {
               </div>
             </article>
           ) : null}
+          <div ref={bottomRef} />
         </div>
 
         {props.isDragging ? (
@@ -507,7 +556,11 @@ function TrainingView(props: TrainingViewProps) {
             <textarea
               ref={props.inputRef}
               value={props.input}
-              onChange={(event) => props.onInputChange(event.target.value)}
+              onChange={(event) => {
+                props.onInputChange(event.target.value);
+                event.target.style.height = 'auto';
+                event.target.style.height = `${Math.min(event.target.scrollHeight, 150)}px`;
+              }}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault();
@@ -602,9 +655,20 @@ function SettingsView({
           </label>
         </div>
 
-        <div className="settings-empty-space">
-          <Bot size={30} />
-          <span>这里预留更多面试官画像设置，例如院校风格、导师方向、追问轮数、评分维度。</span>
+        <div className="setting-block compact">
+          <span className="setting-title">追问轮数</span>
+          <div className="segmented-control">
+            {[3, 5, 8].map((n) => (
+              <button
+                className={(settings.maxRounds ?? 5) === n ? "selected" : ""}
+                key={n}
+                type="button"
+                onClick={() => onChange({ ...settings, maxRounds: n })}
+              >
+                {n} 轮
+              </button>
+            ))}
+          </div>
         </div>
       </div>
     </section>
