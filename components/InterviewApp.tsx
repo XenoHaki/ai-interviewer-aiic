@@ -44,6 +44,7 @@ type InterviewSettings = {
   pressure: PressureLevel;
   direction: string;
   english: boolean;
+  englishIntro: boolean;
   focus: string;
 };
 
@@ -75,6 +76,7 @@ const defaultSettings: InterviewSettings = {
   pressure: "normal",
   direction: "计算机保研 / 人工智能方向",
   english: false,
+  englishIntro: false,
   focus: "项目深挖、专业基础、科研潜力",
 };
 
@@ -102,7 +104,7 @@ function buildContext(settings: InterviewSettings, attachments: Attachment[]) {
     : "本轮用户未上传附件。";
 
   return [
-    `面试官设置：压力程度=${pressureLabel(settings.pressure)}；专业方向=${settings.direction}；是否英语面试=${settings.english ? "是" : "否"}；重点考察=${settings.focus}。`,
+    `面试官设置：压力程度=${pressureLabel(settings.pressure)}；专业方向=${settings.direction}；是否英语面试=${settings.english ? "是" : "否"}；要求英语自我介绍=${settings.englishIntro ? "是" : "否"}；重点考察=${settings.focus}。`,
     "你要扮演计算机保研复试面试官。优先连续追问项目细节、专业基础、科研潜力和表达漏洞。",
     "每次回复尽量包含：一个主要追问、简短点评、下一步回答提示。不要一次抛出太多问题。",
     attachmentText,
@@ -589,6 +591,14 @@ function SettingsView({
               onChange={(event) => onChange({ ...settings, english: event.target.checked })}
             />
             <span>开启英文追问和英文表达反馈</span>
+          </label>
+          <label className="toggle-line">
+            <input
+              type="checkbox"
+              checked={settings.englishIntro ?? false}
+              onChange={(event) => onChange({ ...settings, englishIntro: event.target.checked })}
+            />
+            <span>要求英语自我介绍</span>
           </label>
         </div>
 
