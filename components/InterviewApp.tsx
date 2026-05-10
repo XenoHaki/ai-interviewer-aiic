@@ -11,6 +11,8 @@ import {
   Home,
   Image as ImageIcon,
   Loader2,
+  LogIn,
+  LogOut,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -74,6 +76,12 @@ type InterviewRecord = {
   createdAt: string;
   summary: string;
   messages: ChatMessage[];
+  rounds?: number;
+};
+
+type AuthUser = {
+  id: number;
+  username: string;
 };
 
 const navItems: Array<{ key: PageKey; label: string; icon: typeof Home }> = [
@@ -218,6 +226,9 @@ export function InterviewApp() {
   const [theme, setTheme] = useState<ThemeMode>("light");
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [records, setRecords] = useState<InterviewRecord[]>([]);
+  const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const [settings, setSettings] = useState<InterviewSettings>(defaultSettings);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -233,6 +244,22 @@ export function InterviewApp() {
     () => (input.trim().length > 0 || attachments.length > 0) && !isSending,
     [attachments.length, input, isSending],
   );
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((data) => { if (data.user) setUser(data.user); })
+      .catch(() => {})
+      .finally(() => setAuthLoading(false));
+  }, []);
+
+  useEffect(() => {
+    if (!user) { setRecords([]); return; }
+    fetch("/api/records")
+      .then((r) => r.json())
+      .then((data) => { if (data.records) setRecords(data.records); })
+      .catch(() => {});
+  }, [user]);
 
   useEffect(() => {
     const savedTheme = window.localStorage.getItem("aiic-theme");
@@ -294,25 +321,53 @@ export function InterviewApp() {
   }
 
   function saveRecord(nextMessages: ChatMessage[]) {
+    if (!user) return;
     const latestAssistant = [...nextMessages].reverse().find((message) => message.role === "assistant");
-    const now = new Date();
-    const ts = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
-    const isQuiz = (settings.mode ?? "project") === "quiz";
-    const modeLabel = isQuiz ? "专业课快问" : "保研面试";
-    const levelLabel = isQuiz
-      ? { friendly: "简单", normal: "普通", strict: "困难" }[settings.pressure]
-      : pressureLabel(settings.pressure);
-    const subjectLabel = isQuiz ? (settings.quizSubject ?? "数据结构") : settings.direction;
-    const title = `${modeLabel}-${levelLabel}-${subjectLabel}-${ts}`;
-    const record: InterviewRecord = {
-      id: createId(),
-      title,
-      createdAt: now.toLocaleString("zh-CN", { hour12: false }),
-      summary: latestAssistant?.content.slice(0, 90) || "等待面试官反馈",
-      messages: nextMessages,
-    };
+    const userCount = nextMessages.filter((m) => m.role === "user").length;
+    const summary = latestAssistant?.content.slice(0, 90) || "等待面试官反馈";
 
-    setRecords((current) => [record, ...current].slice(0, 10));
+    if (currentRecordId) {
+      setRecords((current) =>
+        current.map((r) =>
+          r.id === currentRecordId
+            ? { ...r, summary, messages: nextMessages, rounds: userCount }
+            : r,
+        ),
+      );
+      syncRecordToServer({ id: currentRecordId, title: "", createdAt: "", summary, messages: nextMessages, rounds: userCount });
+    } else {
+      const now = new Date();
+      const ts = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+      const isQuiz = (settings.mode ?? "project") === "quiz";
+      const modeLabel = isQuiz ? "专业课快问" : "保研面试";
+      const levelLabel = isQuiz
+        ? { friendly: "简单", normal: "普通", strict: "困难" }[settings.pressure]
+        : pressureLabel(settings.pressure);
+      const subjectLabel = isQuiz ? (settings.quizSubject ?? "数据结构") : (settings.direction || "综合");
+      const title = `${modeLabel}-${levelLabel}-${subjectLabel}-${ts}`;
+      const newId = createId();
+      const record: InterviewRecord = {
+        id: newId,
+        title,
+        createdAt: now.toLocaleString("zh-CN", { hour12: false }),
+        summary,
+        messages: nextMessages,
+        rounds: userCount,
+      };
+      setCurrentRecordId(newId);
+      setRecords((current) => [record, ...current].slice(0, 50));
+      syncRecordToServer(record);
+    }
+  }
+
+  function syncRecordToServer(record: Partial<InterviewRecord> & { id: string }) {
+    const existing = records.find((r) => r.id === record.id);
+    const payload = existing ? { ...existing, ...record } : record;
+    fetch("/api/records", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).catch(() => {});
   }
 
   function getWelcomeMessages(): ChatMessage[] {
@@ -342,6 +397,7 @@ export function InterviewApp() {
     setInput("");
     setError("");
     setReport(null);
+    setCurrentRecordId(null);
     setActivePage("training");
   }
 
@@ -479,6 +535,28 @@ export function InterviewApp() {
     }
   }
 
+  if (authLoading) {
+    return (
+      <div className={`app-layout theme-${theme}`}>
+        <div className="auth-loading">
+          <Loader2 size={32} className="spin" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
+    return (
+      <div className={`app-layout theme-${theme}`}>
+        <LoginView
+          onSuccess={(u) => setUser(u)}
+          theme={theme}
+          onToggleTheme={() => setTheme((v) => (v === "light" ? "dark" : "light"))}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className={`app-layout theme-${theme} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       <aside className="sidebar">
@@ -512,6 +590,28 @@ export function InterviewApp() {
             );
           })}
         </nav>
+
+        {user && (
+          <div className="sidebar-user">
+            <div className="sidebar-user-info">
+              <User size={16} aria-hidden="true" />
+              <span>{user.username}</span>
+            </div>
+            <button
+              className="icon-button"
+              type="button"
+              title="退出登录"
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                setUser(null);
+                setRecords([]);
+                setCurrentRecordId(null);
+              }}
+            >
+              <LogOut size={16} />
+            </button>
+          </div>
+        )}
 
         <button
           className="theme-toggle"
@@ -557,9 +657,16 @@ export function InterviewApp() {
             records={records}
             onLoad={(record) => {
               setMessages(record.messages);
+              setCurrentRecordId(record.id);
+              setReport(null);
               setActivePage("training");
             }}
             onNew={startNewInterview}
+            onDelete={(id) => {
+              setRecords((current) => current.filter((r) => r.id !== id));
+              if (currentRecordId === id) setCurrentRecordId(null);
+              fetch(`/api/records/${id}`, { method: "DELETE" }).catch(() => {});
+            }}
           />
         )}
       </main>
@@ -1034,10 +1141,12 @@ function RecordsView({
   records,
   onLoad,
   onNew,
+  onDelete,
 }: {
   records: InterviewRecord[];
   onLoad: (record: InterviewRecord) => void;
   onNew: () => void;
+  onDelete: (id: string) => void;
 }) {
   return (
     <section className="records-view">
@@ -1054,21 +1163,159 @@ function RecordsView({
       <div className="record-list">
         {records.length ? (
           records.map((record, index) => (
-            <button className="record-item" key={record.id} type="button" onClick={() => onLoad(record)}>
-              <span className="record-index">{String(index + 1).padStart(2, "0")}</span>
-              <span className="record-main">
-                <strong>{record.title}</strong>
-                <small>{record.createdAt}</small>
-              </span>
-              <ChevronRight size={18} aria-hidden="true" />
-            </button>
+            <div className="record-item-wrapper" key={record.id}>
+              <button className="record-item" type="button" onClick={() => onLoad(record)}>
+                <span className="record-index">{String(index + 1).padStart(2, "0")}</span>
+                <span className="record-main">
+                  <strong>{record.title}</strong>
+                  <small>{record.createdAt}{record.rounds ? ` · ${record.rounds} 轮` : ""}</small>
+                </span>
+                <ChevronRight size={18} aria-hidden="true" />
+              </button>
+              <button
+                className="record-delete"
+                type="button"
+                title="删除记录"
+                onClick={(e) => { e.stopPropagation(); onDelete(record.id); }}
+              >
+                <X size={15} />
+              </button>
+            </div>
           ))
         ) : (
           <div className="empty-state">
             <History size={32} />
-            <p>暂无面试记录。完成一次训练后，这里会保存最近 10 条对话。</p>
+            <p>暂无面试记录。完成一次训练后，这里会自动保存对话。</p>
           </div>
         )}
+      </div>
+    </section>
+  );
+}
+
+function LoginView({
+  onSuccess,
+  theme,
+  onToggleTheme,
+}: {
+  onSuccess: (user: AuthUser) => void;
+  theme: ThemeMode;
+  onToggleTheme: () => void;
+}) {
+  const [isRegister, setIsRegister] = useState(false);
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPwd, setConfirmPwd] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: FormEvent) {
+    e.preventDefault();
+    setError("");
+
+    if (!username.trim() || !password) {
+      setError("请填写用户名和密码");
+      return;
+    }
+
+    if (isRegister && password !== confirmPwd) {
+      setError("两次密码不一致");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: username.trim(), password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "操作失败");
+        return;
+      }
+      onSuccess(data.user);
+    } catch {
+      setError("网络错误，请稍后重试");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <section className="login-view">
+      <button
+        className="theme-toggle login-theme-toggle"
+        type="button"
+        onClick={onToggleTheme}
+        title={theme === "light" ? "切换到深色模式" : "切换到浅色模式"}
+      >
+        <span className="half-moon-icon" aria-hidden="true" />
+      </button>
+
+      <div className="login-card">
+        <div className="login-header">
+          <img src="/icon.png" alt="logo" className="login-logo" />
+          <h1>3As 智能面试官</h1>
+          <p>{isRegister ? "创建新账号" : "登录到您的账号"}</p>
+        </div>
+
+        <form className="login-form" onSubmit={handleSubmit}>
+          <div className="login-field">
+            <label htmlFor="username">用户名</label>
+            <input
+              id="username"
+              type="text"
+              placeholder="请输入用户名"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              autoComplete="username"
+              autoFocus
+            />
+          </div>
+
+          <div className="login-field">
+            <label htmlFor="password">密码</label>
+            <input
+              id="password"
+              type="password"
+              placeholder="请输入密码"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete={isRegister ? "new-password" : "current-password"}
+            />
+          </div>
+
+          {isRegister && (
+            <div className="login-field">
+              <label htmlFor="confirmPwd">确认密码</label>
+              <input
+                id="confirmPwd"
+                type="password"
+                placeholder="请再次输入密码"
+                value={confirmPwd}
+                onChange={(e) => setConfirmPwd(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+          )}
+
+          {error && <p className="login-error">{error}</p>}
+
+          <button className="login-submit" type="submit" disabled={loading}>
+            {loading ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}
+            <span>{isRegister ? "注册" : "登录"}</span>
+          </button>
+        </form>
+
+        <p className="login-switch">
+          {isRegister ? "已有账号？" : "还没有账号？"}
+          <button type="button" onClick={() => { setIsRegister(!isRegister); setError(""); }}>
+            {isRegister ? "去登录" : "去注册"}
+          </button>
+        </p>
       </div>
     </section>
   );

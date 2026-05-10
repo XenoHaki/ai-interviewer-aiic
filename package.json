@@ -13,6 +13,9 @@
   "author": "",
   "license": "UNLICENSED",
   "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^12.9.0",
+    "jose": "^6.2.3",
     "lucide-react": "^1.14.0",
     "next": "^16.2.6",
     "react": "^19.2.6",
@@ -21,6 +24,8 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "25.6.2",
     "@types/react": "19.2.14",
     "typescript": "6.0.3"
