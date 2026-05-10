@@ -405,7 +405,7 @@ h2 {
 
 .feature-cards {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
   margin-top: 32px;
   width: 100%;
@@ -920,6 +920,142 @@ h2 {
   align-content: center;
   color: var(--muted);
   text-align: center;
+}
+
+.quiz-subject-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.quiz-subject-btn {
+  padding: 8px 12px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: 8px;
+  background: var(--control);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.app-layout.theme-dark .quiz-subject-btn {
+  border-color: #27272A;
+}
+
+.quiz-subject-btn.selected {
+  border-color: #6366F1;
+  background: rgba(99, 102, 241, 0.1);
+  color: #6366F1;
+  font-weight: 600;
+}
+
+.quiz-subject-btn:hover:not(.selected) {
+  border-color: #6366F1;
+}
+
+.report-btn {
+  border-color: #6366F1 !important;
+  color: #6366F1 !important;
+}
+
+.report-card {
+  margin-top: 16px;
+  padding: 24px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: 12px;
+  background: var(--surface);
+  animation: fadeSlideUp 0.3s ease;
+}
+
+.app-layout.theme-dark .report-card {
+  border-color: #27272A;
+}
+
+.report-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 20px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #6366F1;
+}
+
+.report-dimensions {
+  display: grid;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.report-dim {
+  display: grid;
+  gap: 6px;
+}
+
+.report-dim-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.report-dim-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.report-dim-score {
+  font-weight: 700;
+  font-size: 14px;
+  color: #6366F1;
+}
+
+.score-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--control);
+  overflow: hidden;
+}
+
+.score-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: linear-gradient(90deg, #6366F1, #818CF8);
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.report-dim-comment {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.report-overall,
+.report-suggestion {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.report-overall strong,
+.report-suggestion strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+
+.report-overall p,
+.report-suggestion p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.report-suggestion {
+  margin-top: 12px;
 }
 
 .record-list {

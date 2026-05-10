@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  BookOpen,
   Bot,
   ChevronRight,
+  ClipboardCheck,
   FileText,
   Gauge,
   History,
@@ -25,6 +27,7 @@ import remarkGfm from "remark-gfm";
 
 type PageKey = "home" | "training" | "settings" | "records";
 type PressureLevel = "friendly" | "normal" | "strict";
+type TrainingMode = "project" | "quiz";
 type MessageRole = "assistant" | "user";
 type ThemeMode = "light" | "dark";
 
@@ -49,6 +52,20 @@ type InterviewSettings = {
   englishIntro: boolean;
   focus: string;
   maxRounds: number;
+  mode: TrainingMode;
+  quizSubject: string;
+};
+
+type ReportDimension = {
+  name: string;
+  score: number;
+  comment: string;
+};
+
+type InterviewReport = {
+  dimensions: ReportDimension[];
+  overall: string;
+  suggestion: string;
 };
 
 type InterviewRecord = {
@@ -75,6 +92,8 @@ const initialMessages: ChatMessage[] = [
   },
 ];
 
+const quizSubjects = ["数据结构", "机器学习", "操作系统", "计算机网络", "线性代数", "概率论"];
+
 const defaultSettings: InterviewSettings = {
   pressure: "normal",
   direction: "多模态NLP",
@@ -82,6 +101,8 @@ const defaultSettings: InterviewSettings = {
   englishIntro: false,
   focus: "项目深挖、专业基础、科研潜力",
   maxRounds: 5,
+  mode: "project",
+  quizSubject: "数据结构",
 };
 
 function createId() {
@@ -106,6 +127,15 @@ function buildContext(settings: InterviewSettings, attachments: Attachment[]) {
   const attachmentText = attachments.length
     ? `本轮用户上传了材料：${attachments.map((file) => file.name).join("、")}。如果无法直接读取文件内容，请提醒用户粘贴关键片段。`
     : "本轮用户未上传附件。";
+
+  if ((settings.mode ?? "project") === "quiz") {
+    return [
+      `你是计算机保研面试考官，当前进行专业课快问快答环节。科目：${settings.quizSubject ?? "数据结构"}。压力程度=${pressureLabel(settings.pressure)}。`,
+      "请随机挑选一道该科目的高频保研面试题提问。",
+      "用户回答后给出简短点评（对/错/不完整）+ 参考答案要点 + 下一题。",
+      "保持节奏紧凑，每次只问一题。如果用户说'下一题'或'换一题'，直接出新题。",
+    ].join("\n");
+  }
 
   return [
     `面试官设置：压力程度=${pressureLabel(settings.pressure)}；专业方向=${settings.direction}；是否英语面试=${settings.english ? "是" : "否"}；要求英语自我介绍=${settings.englishIntro ? "是" : "否"}；追问轮数=${settings.maxRounds ?? 5}；重点考察=${settings.focus}。`,
@@ -146,6 +176,8 @@ export function InterviewApp() {
   const [isDragging, setIsDragging] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState("");
+  const [report, setReport] = useState<InterviewReport | null>(null);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -224,12 +256,64 @@ export function InterviewApp() {
     setRecords((current) => [record, ...current].slice(0, 10));
   }
 
+  function getWelcomeMessages(): ChatMessage[] {
+    if ((settings.mode ?? "project") === "quiz") {
+      return [{
+        id: "welcome",
+        role: "assistant",
+        content: `同学你好，现在进入「${settings.quizSubject ?? "数据结构"}」专业课快问快答环节。\n\n我会逐题提问高频面试题，你回答后我会给出点评和参考答案。\n\n准备好了吗？请回复"开始"，或直接说"下一题"。`,
+      }];
+    }
+    return initialMessages;
+  }
+
   function startNewInterview() {
-    setMessages(initialMessages);
+    setMessages(getWelcomeMessages());
     setAttachments([]);
     setInput("");
     setError("");
+    setReport(null);
     setActivePage("training");
+  }
+
+  const userMessageCount = useMemo(
+    () => messages.filter((m) => m.role === "user").length,
+    [messages],
+  );
+
+  async function generateReport() {
+    if (isGeneratingReport || userMessageCount < 2) return;
+    setIsGeneratingReport(true);
+    setError("");
+
+    const reportPrompt = `请根据以下面试对话，对候选人进行评估。以纯JSON格式回复（不要markdown代码块），结构如下：
+{"dimensions":[{"name":"项目表达","score":4,"comment":"..."},{"name":"专业基础","score":3,"comment":"..."},{"name":"逻辑清晰度","score":4,"comment":"..."},{"name":"英语表达","score":3,"comment":"..."},{"name":"应变能力","score":4,"comment":"..."}],"overall":"总体评价...","suggestion":"改进建议..."}
+维度：项目表达、专业基础、逻辑清晰度、英语表达、应变能力。每项1-5分。请严格按此JSON格式输出。`;
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "user", content: reportPrompt },
+            ...messages.map(({ role, content }) => ({ role, content })),
+            { role: "user", content: "请根据以上对话生成评分报告。" },
+          ],
+        }),
+      });
+      const data = (await response.json()) as { reply?: string; error?: string };
+      if (!response.ok || !data.reply) throw new Error(data.error || "生成报告失败");
+
+      const jsonStr = data.reply.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(jsonStr) as InterviewReport;
+      if (!parsed.dimensions || !Array.isArray(parsed.dimensions)) throw new Error("报告格式异常");
+      setReport(parsed);
+    } catch (err) {
+      setError(err instanceof Error ? `报告生成失败：${err.message}` : "报告生成失败");
+    } finally {
+      setIsGeneratingReport(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -355,15 +439,19 @@ export function InterviewApp() {
             input={input}
             inputRef={inputRef}
             isDragging={isDragging}
+            isGeneratingReport={isGeneratingReport}
             isSending={isSending}
             messages={messages}
             onDrop={handleDrop}
             onFileChange={handleFileChange}
+            onGenerateReport={generateReport}
             onInputChange={setInput}
             onNewInterview={startNewInterview}
             onRemoveAttachment={(id) => setAttachments((current) => current.filter((file) => file.id !== id))}
             onSubmit={handleSubmit}
             onToggleDrag={setIsDragging}
+            report={report}
+            userMessageCount={userMessageCount}
           />
         )}
         {activePage === "settings" && <SettingsView settings={settings} onChange={setSettings} />}
@@ -406,9 +494,14 @@ function HomeView({ onStart }: { onStart: () => void }) {
             <span>连续深入追问项目细节，给出针对性点评和改进建议</span>
           </div>
           <div className="feature-card">
-            <Gauge size={24} />
-            <strong>英语面试</strong>
-            <span>支持英文追问与自我介绍练习，提前适应英语面试环境</span>
+            <BookOpen size={24} />
+            <strong>专业课快问</strong>
+            <span>数据结构、ML、线代等高频考点逐题训练</span>
+          </div>
+          <div className="feature-card">
+            <ClipboardCheck size={24} />
+            <strong>评分报告</strong>
+            <span>面试结束后自动生成五维评分与改进建议</span>
           </div>
         </div>
       </div>
@@ -424,15 +517,19 @@ type TrainingViewProps = {
   input: string;
   inputRef: React.RefObject<HTMLTextAreaElement | null>;
   isDragging: boolean;
+  isGeneratingReport: boolean;
   isSending: boolean;
   messages: ChatMessage[];
   onDrop: (event: DragEvent<HTMLDivElement>) => void;
   onFileChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onGenerateReport: () => void;
   onInputChange: (value: string) => void;
   onNewInterview: () => void;
   onRemoveAttachment: (id: string) => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
   onToggleDrag: (value: boolean) => void;
+  report: InterviewReport | null;
+  userMessageCount: number;
 };
 
 function TrainingView(props: TrainingViewProps) {
@@ -459,7 +556,7 @@ function TrainingView(props: TrainingViewProps) {
           <p className="eyebrow">Interview Training</p>
           <h2>面试训练</h2>
         </div>
-        <div style={{ display: 'flex', gap: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button className="ghost-action" type="button" onClick={props.onNewInterview}>
             新建面试
           </button>
@@ -467,6 +564,17 @@ function TrainingView(props: TrainingViewProps) {
             <Upload size={17} />
             上传材料
           </button>
+          {props.userMessageCount >= 2 && (
+            <button
+              className="ghost-action report-btn"
+              type="button"
+              onClick={props.onGenerateReport}
+              disabled={props.isGeneratingReport}
+            >
+              {props.isGeneratingReport ? <Loader2 size={17} className="spin" /> : <ClipboardCheck size={17} />}
+              {props.isGeneratingReport ? "生成中..." : "生成报告"}
+            </button>
+          )}
         </div>
       </header>
 
@@ -576,7 +684,42 @@ function TrainingView(props: TrainingViewProps) {
           </div>
         </form>
       </div>
+
+      {props.report && <ReportCard report={props.report} />}
     </section>
+  );
+}
+
+function ReportCard({ report }: { report: InterviewReport }) {
+  return (
+    <div className="report-card">
+      <h3 className="report-title">
+        <ClipboardCheck size={20} />
+        面试评估报告
+      </h3>
+      <div className="report-dimensions">
+        {report.dimensions.map((dim) => (
+          <div className="report-dim" key={dim.name}>
+            <div className="report-dim-header">
+              <span className="report-dim-name">{dim.name}</span>
+              <span className="report-dim-score">{dim.score}/5</span>
+            </div>
+            <div className="score-bar">
+              <div className="score-bar-fill" style={{ width: `${(dim.score / 5) * 100}%` }} />
+            </div>
+            <p className="report-dim-comment">{dim.comment}</p>
+          </div>
+        ))}
+      </div>
+      <div className="report-overall">
+        <strong>总体评价</strong>
+        <p>{report.overall}</p>
+      </div>
+      <div className="report-suggestion">
+        <strong>改进建议</strong>
+        <p>{report.suggestion}</p>
+      </div>
+    </div>
   );
 }
 
@@ -597,6 +740,39 @@ function SettingsView({
       </header>
 
       <div className="settings-grid">
+        <div className="setting-block">
+          <div className="setting-title">
+            <BookOpen size={18} />
+            <span>训练模式</span>
+          </div>
+          <div className="segmented-control">
+            {([["project", "项目面试"], ["quiz", "专业课快问"]] as [TrainingMode, string][]).map(([mode, label]) => (
+              <button
+                className={(settings.mode ?? "project") === mode ? "selected" : ""}
+                key={mode}
+                type="button"
+                onClick={() => onChange({ ...settings, mode })}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          {(settings.mode ?? "project") === "quiz" && (
+            <div className="quiz-subject-grid">
+              {quizSubjects.map((subject) => (
+                <button
+                  className={`quiz-subject-btn ${(settings.quizSubject ?? "数据结构") === subject ? "selected" : ""}`}
+                  key={subject}
+                  type="button"
+                  onClick={() => onChange({ ...settings, quizSubject: subject })}
+                >
+                  {subject}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="setting-block">
           <div className="setting-title">
             <Gauge size={18} />
