@@ -1,0 +1,15 @@
+node_modules
+.next
+out
+.playwright-cli
+output
+.env
+.env.local
+.env.*.local
+dev-server.log
+challenge_pdf_text.txt
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.tsbuildinfo
