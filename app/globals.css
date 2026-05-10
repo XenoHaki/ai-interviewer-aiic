@@ -1470,85 +1470,71 @@ h2 {
   }
 }
 
-/* Auth loading */
-.auth-loading {
-  display: grid;
-  place-items: center;
-  height: 100vh;
-  color: var(--primary);
+/* Top-right auth button */
+.top-right-auth {
+  position: fixed;
+  top: 16px;
+  right: 20px;
+  z-index: 100;
 }
 
-/* Sidebar user */
-.sidebar-user {
+.auth-login-btn,
+.auth-user-btn {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 10px 16px;
-  border-top: 1px solid var(--border);
-  margin-top: auto;
-}
-
-.sidebar-user-info {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
   font-size: 13px;
   font-weight: 600;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
 
-/* Login View */
-.login-view {
+.auth-login-btn:hover,
+.auth-user-btn:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
+}
+
+/* Auth modal */
+.auth-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
   display: grid;
   place-items: center;
-  min-height: 100vh;
-  padding: 24px;
-  background: var(--background);
-  position: relative;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
 }
 
-.login-theme-toggle {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-}
-
-.login-card {
+.auth-modal {
   width: 100%;
-  max-width: 400px;
-  padding: 40px 32px;
+  max-width: 380px;
+  padding: 32px 28px;
   border-radius: 20px;
   background: var(--surface);
   border: 1px solid var(--border);
-  box-shadow: 0 8px 32px var(--shadow);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
 }
 
-.login-header {
+.auth-modal-logged {
+  display: grid;
+  gap: 20px;
   text-align: center;
-  margin-bottom: 28px;
 }
 
-.login-logo {
-  width: 56px;
-  height: 56px;
-  border-radius: 14px;
-  margin-bottom: 12px;
-}
-
-.login-header h1 {
-  font-size: 22px;
-  font-weight: 800;
+.auth-modal-user {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 700;
   color: var(--text);
-  margin: 0 0 6px;
-}
-
-.login-header p {
-  font-size: 14px;
-  color: var(--muted);
-  margin: 0;
 }
 
 .login-form {

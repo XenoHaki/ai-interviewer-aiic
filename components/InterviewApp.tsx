@@ -228,7 +228,6 @@ export function InterviewApp() {
   const [records, setRecords] = useState<InterviewRecord[]>([]);
   const [currentRecordId, setCurrentRecordId] = useState<string | null>(null);
   const [user, setUser] = useState<AuthUser | null>(null);
-  const [authLoading, setAuthLoading] = useState(true);
   const [settings, setSettings] = useState<InterviewSettings>(defaultSettings);
   const [input, setInput] = useState("");
   const [attachments, setAttachments] = useState<Attachment[]>([]);
@@ -249,8 +248,7 @@ export function InterviewApp() {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((data) => { if (data.user) setUser(data.user); })
-      .catch(() => {})
-      .finally(() => setAuthLoading(false));
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -535,27 +533,7 @@ export function InterviewApp() {
     }
   }
 
-  if (authLoading) {
-    return (
-      <div className={`app-layout theme-${theme}`}>
-        <div className="auth-loading">
-          <Loader2 size={32} className="spin" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!user) {
-    return (
-      <div className={`app-layout theme-${theme}`}>
-        <LoginView
-          onSuccess={(u) => setUser(u)}
-          theme={theme}
-          onToggleTheme={() => setTheme((v) => (v === "light" ? "dark" : "light"))}
-        />
-      </div>
-    );
-  }
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   return (
     <div className={`app-layout theme-${theme} ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
@@ -590,28 +568,6 @@ export function InterviewApp() {
             );
           })}
         </nav>
-
-        {user && (
-          <div className="sidebar-user">
-            <div className="sidebar-user-info">
-              <User size={16} aria-hidden="true" />
-              <span>{user.username}</span>
-            </div>
-            <button
-              className="icon-button"
-              type="button"
-              title="退出登录"
-              onClick={async () => {
-                await fetch("/api/auth/logout", { method: "POST" });
-                setUser(null);
-                setRecords([]);
-                setCurrentRecordId(null);
-              }}
-            >
-              <LogOut size={16} />
-            </button>
-          </div>
-        )}
 
         <button
           className="theme-toggle"
@@ -670,6 +626,51 @@ export function InterviewApp() {
           />
         )}
       </main>
+
+      <div className="top-right-auth">
+        {user ? (
+          <button className="auth-user-btn" type="button" onClick={() => setShowAuthModal(true)}>
+            <User size={16} />
+            <span>{user.username}</span>
+          </button>
+        ) : (
+          <button className="auth-login-btn" type="button" onClick={() => setShowAuthModal(true)}>
+            <LogIn size={16} />
+            <span>登录</span>
+          </button>
+        )}
+      </div>
+
+      {showAuthModal && (
+        <div className="auth-modal-overlay" onClick={() => setShowAuthModal(false)}>
+          <div className="auth-modal" onClick={(e) => e.stopPropagation()}>
+            {user ? (
+              <div className="auth-modal-logged">
+                <div className="auth-modal-user">
+                  <User size={24} />
+                  <span>{user.username}</span>
+                </div>
+                <button
+                  className="login-submit"
+                  type="button"
+                  onClick={async () => {
+                    await fetch("/api/auth/logout", { method: "POST" });
+                    setUser(null);
+                    setRecords([]);
+                    setCurrentRecordId(null);
+                    setShowAuthModal(false);
+                  }}
+                >
+                  <LogOut size={16} />
+                  <span>退出登录</span>
+                </button>
+              </div>
+            ) : (
+              <AuthForm onSuccess={(u) => { setUser(u); setShowAuthModal(false); }} />
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1193,15 +1194,7 @@ function RecordsView({
   );
 }
 
-function LoginView({
-  onSuccess,
-  theme,
-  onToggleTheme,
-}: {
-  onSuccess: (user: AuthUser) => void;
-  theme: ThemeMode;
-  onToggleTheme: () => void;
-}) {
+function AuthForm({ onSuccess }: { onSuccess: (user: AuthUser) => void }) {
   const [isRegister, setIsRegister] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -1245,78 +1238,59 @@ function LoginView({
   }
 
   return (
-    <section className="login-view">
-      <button
-        className="theme-toggle login-theme-toggle"
-        type="button"
-        onClick={onToggleTheme}
-        title={theme === "light" ? "切换到深色模式" : "切换到浅色模式"}
-      >
-        <span className="half-moon-icon" aria-hidden="true" />
+    <form className="login-form" onSubmit={handleSubmit}>
+      <div className="login-field">
+        <label htmlFor="auth-username">用户名</label>
+        <input
+          id="auth-username"
+          type="text"
+          placeholder="请输入用户名"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          autoComplete="username"
+          autoFocus
+        />
+      </div>
+
+      <div className="login-field">
+        <label htmlFor="auth-password">密码</label>
+        <input
+          id="auth-password"
+          type="password"
+          placeholder="请输入密码"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          autoComplete={isRegister ? "new-password" : "current-password"}
+        />
+      </div>
+
+      {isRegister && (
+        <div className="login-field">
+          <label htmlFor="auth-confirm">确认密码</label>
+          <input
+            id="auth-confirm"
+            type="password"
+            placeholder="请再次输入密码"
+            value={confirmPwd}
+            onChange={(e) => setConfirmPwd(e.target.value)}
+            autoComplete="new-password"
+          />
+        </div>
+      )}
+
+      {error && <p className="login-error">{error}</p>}
+
+      <button className="login-submit" type="submit" disabled={loading}>
+        {loading ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}
+        <span>{isRegister ? "注册" : "登录"}</span>
       </button>
 
-      <div className="login-card">
-        <div className="login-header">
-          <img src="/icon.png" alt="logo" className="login-logo" />
-          <h1>3As 智能面试官</h1>
-          <p>{isRegister ? "创建新账号" : "登录到您的账号"}</p>
-        </div>
-
-        <form className="login-form" onSubmit={handleSubmit}>
-          <div className="login-field">
-            <label htmlFor="username">用户名</label>
-            <input
-              id="username"
-              type="text"
-              placeholder="请输入用户名"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              autoFocus
-            />
-          </div>
-
-          <div className="login-field">
-            <label htmlFor="password">密码</label>
-            <input
-              id="password"
-              type="password"
-              placeholder="请输入密码"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete={isRegister ? "new-password" : "current-password"}
-            />
-          </div>
-
-          {isRegister && (
-            <div className="login-field">
-              <label htmlFor="confirmPwd">确认密码</label>
-              <input
-                id="confirmPwd"
-                type="password"
-                placeholder="请再次输入密码"
-                value={confirmPwd}
-                onChange={(e) => setConfirmPwd(e.target.value)}
-                autoComplete="new-password"
-              />
-            </div>
-          )}
-
-          {error && <p className="login-error">{error}</p>}
-
-          <button className="login-submit" type="submit" disabled={loading}>
-            {loading ? <Loader2 size={16} className="spin" /> : <LogIn size={16} />}
-            <span>{isRegister ? "注册" : "登录"}</span>
-          </button>
-        </form>
-
-        <p className="login-switch">
-          {isRegister ? "已有账号？" : "还没有账号？"}
-          <button type="button" onClick={() => { setIsRegister(!isRegister); setError(""); }}>
-            {isRegister ? "去登录" : "去注册"}
-          </button>
-        </p>
-      </div>
-    </section>
+      <p className="login-switch">
+        {isRegister ? "已有账号？" : "还没有账号？"}
+        <button type="button" onClick={() => { setIsRegister(!isRegister); setError(""); }}>
+          {isRegister ? "去登录" : "去注册"}
+        </button>
+      </p>
+    </form>
   );
 }
