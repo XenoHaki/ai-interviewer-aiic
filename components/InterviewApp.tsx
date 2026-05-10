@@ -79,6 +79,7 @@ type InterviewRecord = {
   summary: string;
   messages: ChatMessage[];
   rounds?: number;
+  report?: InterviewReport | null;
 };
 
 type AuthUser = {
@@ -353,11 +354,11 @@ export function InterviewApp() {
       setRecords((current) =>
         current.map((r) =>
           r.id === currentRecordId
-            ? { ...r, summary, messages: nextMessages, rounds: userCount }
+            ? { ...r, summary, messages: nextMessages, rounds: userCount, ...(report ? { report } : {}) }
             : r,
         ),
       );
-      syncRecordToServer({ id: currentRecordId, title: "", createdAt: "", summary, messages: nextMessages, rounds: userCount });
+      syncRecordToServer({ id: currentRecordId, title: "", createdAt: "", summary, messages: nextMessages, rounds: userCount, ...(report ? { report } : {}) });
     } else {
       const now = new Date();
       const ts = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
@@ -376,6 +377,7 @@ export function InterviewApp() {
         summary,
         messages: nextMessages,
         rounds: userCount,
+        ...(report ? { report } : {}),
       };
       setCurrentRecordId(newId);
       setRecords((current) => [record, ...current].slice(0, 50));
@@ -459,6 +461,9 @@ export function InterviewApp() {
       const parsed = JSON.parse(jsonStr) as InterviewReport;
       if (!parsed.dimensions || !Array.isArray(parsed.dimensions)) throw new Error("报告格式异常");
       setReport(parsed);
+      if (currentRecordId) {
+        syncRecordToServer({ id: currentRecordId, report: parsed });
+      }
     } catch (err) {
       setError(err instanceof Error ? `报告生成失败：${err.message}` : "报告生成失败");
     } finally {

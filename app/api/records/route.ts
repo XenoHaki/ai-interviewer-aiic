@@ -16,6 +16,7 @@ export async function GET() {
     summary: r.summary,
     messages: JSON.parse(r.messages),
     rounds: r.rounds,
+    report: r.report ? JSON.parse(r.report) : null,
   }));
 
   return NextResponse.json({ records });
@@ -35,6 +36,7 @@ export async function POST(req: NextRequest) {
       summary: string;
       messages: unknown[];
       rounds: number;
+      report?: unknown;
     };
 
     if (!body.id || !body.title || !body.messages) {
@@ -49,6 +51,7 @@ export async function POST(req: NextRequest) {
       body.summary || "",
       JSON.stringify(body.messages),
       body.rounds || 0,
+      body.report ? JSON.stringify(body.report) : undefined,
     );
 
     return NextResponse.json({ ok: true });

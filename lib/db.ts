@@ -31,12 +31,19 @@ function getDb(): Database.Database {
         summary TEXT DEFAULT '',
         messages TEXT NOT NULL,
         rounds INTEGER DEFAULT 0,
+        report TEXT DEFAULT NULL,
         updated_at TEXT DEFAULT (datetime('now')),
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_records_user ON records(user_id);
     `);
+
+    // Migration: add report column if not exists
+    const cols = _db.prepare("PRAGMA table_info(records)").all() as { name: string }[];
+    if (!cols.some((c) => c.name === "report")) {
+      _db.exec("ALTER TABLE records ADD COLUMN report TEXT DEFAULT NULL");
+    }
   }
   return _db;
 }
@@ -56,6 +63,7 @@ export type DbRecord = {
   summary: string;
   messages: string;
   rounds: number;
+  report: string | null;
   updated_at: string;
 };
 
@@ -93,18 +101,20 @@ export function upsertRecord(
   summary: string,
   messages: string,
   rounds: number,
+  report?: string | null,
 ): void {
   const db = getDb();
   const stmt = db.prepare(`
-    INSERT INTO records (id, user_id, title, created_at, summary, messages, rounds, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    INSERT INTO records (id, user_id, title, created_at, summary, messages, rounds, report, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
     ON CONFLICT(id) DO UPDATE SET
       summary = excluded.summary,
       messages = excluded.messages,
       rounds = excluded.rounds,
+      report = COALESCE(excluded.report, report),
       updated_at = datetime('now')
   `);
-  stmt.run(id, userId, title, createdAt, summary, messages, rounds);
+  stmt.run(id, userId, title, createdAt, summary, messages, rounds, report ?? null);
 }
 
 export function deleteRecord(id: string, userId: number): boolean {
