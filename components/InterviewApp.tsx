@@ -434,13 +434,8 @@ export function InterviewApp() {
     setIsGeneratingReport(true);
     setError("");
 
-    const isQuiz = (settings.mode ?? "project") === "quiz";
-    const dims = isQuiz
-      ? "知识准确性、知识覆盖面、表述清晰度、反应速度、举一反三"
-      : "项目表达、专业基础、逻辑清晰度、英语表达、应变能力";
-    const dimExample = isQuiz
-      ? '{"name":"知识准确性","score":8,"comment":"..."},{"name":"知识覆盖面","score":6,"comment":"..."},{"name":"表述清晰度","score":7,"comment":"..."},{"name":"反应速度","score":6,"comment":"..."},{"name":"举一反三","score":7,"comment":"..."}'
-      : '{"name":"项目表达","score":8,"comment":"..."},{"name":"专业基础","score":6,"comment":"..."},{"name":"逻辑清晰度","score":7,"comment":"..."},{"name":"英语表达","score":6,"comment":"..."},{"name":"应变能力","score":7,"comment":"..."}';
+    const dims = "内容深度、逻辑结构、表达清晰度、项目理解、应变能力";
+    const dimExample = '{"name":"内容深度","score":8,"comment":"..."},{"name":"逻辑结构","score":6,"comment":"..."},{"name":"表达清晰度","score":7,"comment":"..."},{"name":"项目理解","score":6,"comment":"..."},{"name":"应变能力","score":7,"comment":"..."}';
     const reportPrompt = `请根据以下对话，对候选人进行评估。以纯JSON格式回复（不要markdown代码块），结构如下：
 {"dimensions":[${dimExample}],"overall":"总体评价（2-3句话）...","suggestion":"具体可执行的改进建议（3-5条）..."}
 评估维度：${dims}。每项1-10分，comment要具体引用对话中的表现。请严格按此JSON格式输出。`;
