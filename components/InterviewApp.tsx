@@ -88,7 +88,7 @@ const initialMessages: ChatMessage[] = [
     id: "welcome",
     role: "assistant",
     content:
-      "同学你好，我是本次夏令营的面试官。请选择训练目标，粘贴你的项目/简历片段，或上传材料后开始模拟面试。我会连续追问并给出反馈。",
+      "同学你好，我是本次保研模拟面试的面试官。\n\n请先在左侧「面试官属性」中设置专业方向和压力程度，然后：\n- **粘贴**你的项目经历或简历片段\n- 或**上传**你的简历/项目文档\n\n我会根据你的材料连续追问，模拟真实面试场景。准备好了就开始吧！",
   },
 ];
 
@@ -96,10 +96,10 @@ const quizSubjects = ["数据结构", "机器学习", "操作系统", "计算机
 
 const defaultSettings: InterviewSettings = {
   pressure: "normal",
-  direction: "多模态NLP",
+  direction: "",
   english: false,
   englishIntro: false,
-  focus: "项目深挖、专业基础、科研潜力",
+  focus: "",
   maxRounds: 5,
   mode: "project",
   quizSubject: "数据结构",
@@ -123,30 +123,77 @@ function pressureLabel(value: PressureLevel) {
   }[value];
 }
 
-function buildContext(settings: InterviewSettings, attachments: Attachment[]) {
+function buildContext(settings: InterviewSettings, attachments: Attachment[], currentRound: number = 0) {
   const attachmentText = attachments.length
     ? `本轮用户上传了材料：${attachments.map((file) => file.name).join("、")}。如果无法直接读取文件内容，请提醒用户粘贴关键片段。`
     : "本轮用户未上传附件。";
+  const maxR = settings.maxRounds ?? 5;
+  const wrapUpInstruction = currentRound >= maxR - 1
+    ? `\n【重要】这是最后一轮追问（第${currentRound + 1}/${maxR}轮）。请在本次回复中：先简短点评用户回答，然后给出本轮面试的总结和改进建议，结束面试。`
+    : currentRound >= maxR - 2
+      ? `\n（提示：当前第${currentRound + 1}轮，还剩${maxR - currentRound - 1}轮即结束。）`
+      : "";
 
   if ((settings.mode ?? "project") === "quiz") {
     const difficultyLabel = { friendly: "简单", normal: "普通", strict: "困难" }[settings.pressure];
+    const difficultyGuide = {
+      friendly: "出基础概念题，侧重定义和直觉理解，允许口语化回答",
+      normal: "出中等难度题，涉及原理推导和典型应用场景，要求条理清晰",
+      strict: "出进阶/易混淆/有陷阱的题目，要求精确表述，会追问细节和边界情况",
+    }[settings.pressure];
     return [
-      `你是计算机保研面试考官，当前进行专业课快问快答环节。科目：${settings.quizSubject ?? "数据结构"}。难度=${difficultyLabel}。`,
-      "请随机挑选一道该科目的高频保研面试题提问。",
-      "用户回答后给出简短点评（10分制分数，形如x/10）+ 参考答案要点 + 下一题。",
-      "保持节奏紧凑，每次只问一题。如果用户说'下一题'或'换一题'，直接出新题。",
+      `【系统指令】你是计算机保研面试的专业课考官，正在进行「${settings.quizSubject ?? "数据结构"}」快问快答。`,
+      `难度：${difficultyLabel}（${difficultyGuide}）。`,
+      "规则：",
+      "1. 每次只出一道题，题目要具体明确，避免过于宽泛。",
+      "2. 用户回答后：先给评分（x/10），再用1-2句话点评对错和不足，然后给出精炼的参考答案要点，最后自动出下一题。",
+      '3. 如果用户说"下一题""换一题""不会""跳过"，直接出新题，不要重复上一题的答案。',
+      "4. 题目来源于保研/考研面试高频考点，覆盖该科目核心章节，尽量不重复、不过于偏门。",
+      "5. 回复格式示例：\n**评分：7/10**\n点评：基本正确，但遗漏了……\n参考答案：……\n\n---\n**下一题：**……",
+      wrapUpInstruction,
     ].join("\n");
   }
 
+  const langInstruction = settings.english
+    ? "本场为英语面试，你必须全程用英文提问和点评。"
+    : settings.englishIntro
+      ? "开场要求候选人用英文做自我介绍（1-2分钟），之后切回中文追问。"
+      : "本场为中文面试。";
+
+  const pressureGuide = {
+    friendly: "语气友善鼓励，先肯定亮点再温和指出不足，给候选人充分思考时间",
+    normal: "语气专业中性，指出不足时直接但不苛刻，节奏适中",
+    strict: "语气严肃，快速打断模糊回答，追问细节和矛盾之处，施加时间压力",
+  }[settings.pressure];
+
   return [
-    `面试官设置：压力程度=${pressureLabel(settings.pressure)}；专业方向=${settings.direction}；是否英语面试=${settings.english ? "是" : "否"}；要求英语自我介绍=${settings.englishIntro ? "是" : "否"}；追问轮数=${settings.maxRounds ?? 5}；重点考察=${settings.focus}。`,
-    "你是一名计算机学院夏令营保研复试的面试老师。优先连续追问项目细节、专业基础、科研潜力和表达漏洞。",
-    "每次回复尽量包含：一个主要追问、简短点评、下一步回答提示。不要一次抛出太多问题。",
+    `【系统指令】你是计算机学院夏令营/保研复试面试官（教授身份）。`,
+    `专业方向：${settings.direction}。压力风格：${pressureLabel(settings.pressure)}（${pressureGuide}）。`,
+    `${langInstruction}`,
+    `重点考察：${settings.focus}。计划追问 ${settings.maxRounds ?? 5} 轮左右。`,
+    "面试策略：",
+    "1. 围绕候选人回答深挖：技术选型理由、实验对比、失败经历、个人贡献占比。",
+    "2. 每次回复包含：对上一个回答的简短点评（1-2句）+ 一个主要追问。不要一次抛出多个问题。",
+    "3. 发现候选人回答模糊或有漏洞时，立即追问具体细节，不要轻易放过。",
+    "4. 适时穿插基础知识提问（与项目相关的理论），测试候选人知识深度。",
+    `5. 追问约 ${settings.maxRounds ?? 5} 轮后，给出本轮面试的简要总结和改进建议，然后询问是否继续。`,
     attachmentText,
+    wrapUpInstruction,
   ].join("\n");
 }
 
 function fallbackInterviewReply(input: string, settings: InterviewSettings) {
+  if ((settings.mode ?? "project") === "quiz") {
+    return [
+      "⚠️ 模型服务暂时不可用，已切换为本地兜底反馈。",
+      "",
+      `**评分：—/10**`,
+      `你的回答提到了「${input.slice(0, 36)}」，但由于模型离线，无法给出准确评分。`,
+      "",
+      "**下一题（示例）：** 请解释什么是时间复杂度和空间复杂度，并举例说明二者的权衡。",
+    ].join("\n");
+  }
+
   const pressureTip =
     settings.pressure === "strict"
       ? "我会用比较高压的方式继续追问。"
@@ -155,13 +202,13 @@ function fallbackInterviewReply(input: string, settings: InterviewSettings) {
         : "我会按标准复试节奏继续追问。";
 
   return [
-    "当前模型服务暂时不可用，已切换为本地兜底面试反馈。",
+    "⚠️ 模型服务暂时不可用，已切换为本地兜底面试反馈。",
     "",
-    `简短点评：你的回答提到了「${input.slice(0, 36)}」，但还没有说明具体贡献、技术取舍和量化结果。${pressureTip}`,
+    `**简短点评：** 你的回答提到了「${input.slice(0, 36)}」，但还没有说明具体贡献、技术取舍和量化结果。${pressureTip}`,
     "",
-    "追问：你说自己负责模型训练，请具体说明你选择了什么模型结构、为什么选择它、最终指标是多少，以及你做过哪些失败实验或对比实验？",
+    "**追问：** 请具体说明你在项目中的个人贡献——你选择了什么技术方案、为什么选择它、最终效果如何、做过哪些对比实验？",
     "",
-    "回答提示：按「任务背景 -> 你的具体工作 -> 方法选择理由 -> 实验结果 -> 反思改进」来回答。",
+    "💡 **回答提示：** 按「任务背景 → 你的具体工作 → 方法选择理由 → 实验结果 → 反思改进」来组织回答。",
   ].join("\n");
 }
 
@@ -215,6 +262,9 @@ export function InterviewApp() {
 
   useEffect(() => {
     window.localStorage.setItem("aiic-settings", JSON.stringify(settings));
+    if (messages.length === 1 && messages[0].id === "welcome") {
+      setMessages(getWelcomeMessages());
+    }
   }, [settings]);
 
   function addFiles(fileList: FileList | File[]) {
@@ -273,7 +323,17 @@ export function InterviewApp() {
         content: `同学你好，现在进入「${settings.quizSubject ?? "数据结构"}」专业课快问快答环节。\n\n我会逐题提问高频面试题，你回答后我会给出点评和参考答案。\n\n准备好了吗？请回复"开始"，或直接说"下一题"。`,
       }];
     }
-    return initialMessages;
+    const introRequest = settings.englishIntro
+      ? "\n\n首先，请用 **英文** 做一段1-2分钟的自我介绍（包括你的学校、专业、研究方向和项目经历）。\n\n⚠️ 注意：本环节要求英文作答，如使用中文回答将酌情扣分。"
+      : settings.english
+        ? "\n\nTo begin, please give a **1-2 minute self-introduction** in English, covering your university, major, research interests, and project experience."
+        : "\n\n首先，请做一段简短的自我介绍（包括你的学校、专业、研究方向和主要项目经历）。";
+    return [{
+      id: "welcome",
+      role: "assistant",
+      content:
+        `同学你好，我是本次保研模拟面试的面试官。\n\n请先在左侧「面试官属性」中设置专业方向和压力程度，然后：\n- **粘贴**你的项目经历或简历片段\n- 或**上传**你的简历/项目文档${introRequest}`,
+    }];
   }
 
   function startNewInterview() {
@@ -295,9 +355,16 @@ export function InterviewApp() {
     setIsGeneratingReport(true);
     setError("");
 
-    const reportPrompt = `请根据以下面试对话，对候选人进行评估。以纯JSON格式回复（不要markdown代码块），结构如下：
-{"dimensions":[{"name":"项目表达","score":4,"comment":"..."},{"name":"专业基础","score":3,"comment":"..."},{"name":"逻辑清晰度","score":4,"comment":"..."},{"name":"英语表达","score":3,"comment":"..."},{"name":"应变能力","score":4,"comment":"..."}],"overall":"总体评价...","suggestion":"改进建议..."}
-维度：项目表达、专业基础、逻辑清晰度、英语表达、应变能力。每项1-5分。请严格按此JSON格式输出。`;
+    const isQuiz = (settings.mode ?? "project") === "quiz";
+    const dims = isQuiz
+      ? "知识准确性、知识覆盖面、表述清晰度、反应速度、举一反三"
+      : "项目表达、专业基础、逻辑清晰度、英语表达、应变能力";
+    const dimExample = isQuiz
+      ? '{"name":"知识准确性","score":8,"comment":"..."},{"name":"知识覆盖面","score":6,"comment":"..."},{"name":"表述清晰度","score":7,"comment":"..."},{"name":"反应速度","score":6,"comment":"..."},{"name":"举一反三","score":7,"comment":"..."}'
+      : '{"name":"项目表达","score":8,"comment":"..."},{"name":"专业基础","score":6,"comment":"..."},{"name":"逻辑清晰度","score":7,"comment":"..."},{"name":"英语表达","score":6,"comment":"..."},{"name":"应变能力","score":7,"comment":"..."}';
+    const reportPrompt = `请根据以下对话，对候选人进行评估。以纯JSON格式回复（不要markdown代码块），结构如下：
+{"dimensions":[${dimExample}],"overall":"总体评价（2-3句话）...","suggestion":"具体可执行的改进建议（3-5条）..."}
+评估维度：${dims}。每项1-10分，comment要具体引用对话中的表现。请严格按此JSON格式输出。`;
 
     try {
       const response = await fetch("/api/chat", {
@@ -349,45 +416,66 @@ export function InterviewApp() {
 
     let withReply: ChatMessage[];
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            { role: "user", content: buildContext(settings, attachments) },
-            ...nextMessages.map(({ role, content }) => ({
-              role,
-              content: role === "user" ? `${content}${attachmentPrompt}` : content,
-            })),
-          ],
-        }),
-      });
-      const data = (await response.json()) as { reply?: string; error?: string };
-      if (!response.ok || !data.reply) throw new Error(data.error || "模型暂时没有返回内容。");
+    const maxRetries = 2;
+    const retryDelay = 3000;
+    let lastError: unknown = null;
+    let success = false;
 
-      withReply = [
-        ...nextMessages,
-        { id: createId(), role: "assistant" as const, content: data.reply },
-      ];
-    } catch (requestError) {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      if (attempt > 0) {
+        setError(`模型请求失败，${retryDelay / 1000}s 后重试（${attempt}/${maxRetries}）…`);
+        await new Promise((r) => setTimeout(r, retryDelay));
+        setError("");
+      }
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: [
+              { role: "user", content: buildContext(settings, attachments, nextMessages.filter(m => m.role === "user").length) },
+              ...nextMessages.map(({ role, content }) => ({
+                role,
+                content: role === "user" ? `${content}${attachmentPrompt}` : content,
+              })),
+            ],
+          }),
+        });
+        const data = (await response.json()) as { reply?: string; error?: string };
+        if (!response.ok || !data.reply) throw new Error(data.error || "模型暂时没有返回内容。");
+
+        withReply = [
+          ...nextMessages,
+          { id: createId(), role: "assistant" as const, content: data.reply },
+        ];
+        success = true;
+        break;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+
+    if (!success) {
       const fallbackReply = fallbackInterviewReply(nextText, settings);
       withReply = [
         ...nextMessages,
         { id: createId(), role: "assistant" as const, content: fallbackReply },
       ];
       setError(
-        requestError instanceof Error
-          ? `模型接口异常，已使用本地兜底回复：${requestError.message}`
+        lastError instanceof Error
+          ? `模型接口异常（已重试${maxRetries}次），已使用本地兜底回复：${lastError.message}`
           : "模型接口异常，已使用本地兜底回复。",
       );
-    } finally {
-      if (withReply!) {
-        setMessages(withReply);
-        saveRecord(withReply);
-      }
-      setIsSending(false);
-      requestAnimationFrame(() => inputRef.current?.focus());
+    }
+
+    setMessages(withReply!);
+    saveRecord(withReply!);
+    setIsSending(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+
+    const newUserCount = withReply!.filter((m) => m.role === "user").length;
+    if (newUserCount >= (settings.maxRounds ?? 5)) {
+      setTimeout(() => generateReport(), 500);
     }
   }
 
@@ -404,7 +492,7 @@ export function InterviewApp() {
           >
             {sidebarCollapsed ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}
           </button>
-          <div className="brand-mark">AI</div>
+          <img className="brand-mark" src="/icon.png" alt="产品图标" />
         </div>
 
         <nav className="sidebar-nav" aria-label="主导航">
@@ -484,11 +572,11 @@ function HomeView({ onStart }: { onStart: () => void }) {
     <section className="home-view">
       <div className="hero-background-slot" aria-hidden="true" />
       <div className="hero-center">
-        <p className="eyebrow">Computer Science Recommendation Interview</p>
-        <h1>AI面试官</h1>
-        <p>面向计算机专业保研学生的模拟面试训练工具。</p>
+        <p className="eyebrow">Accelerate, Accurate, Accompany</p>
+        <h1>3As 智能面试官</h1>
+        <p>专为计算机专业保研学生打造的模拟面试训练平台。</p>
         <button className="primary-action" type="button" onClick={onStart}>
-          开始训练
+          立即开始
           <ChevronRight size={18} />
         </button>
         <div className="feature-cards">
@@ -625,6 +713,7 @@ function TrainingView(props: TrainingViewProps) {
               </div>
             </article>
           ) : null}
+          {props.report && <ReportCard report={props.report} />}
           <div ref={bottomRef} />
         </div>
 
@@ -694,8 +783,82 @@ function TrainingView(props: TrainingViewProps) {
         </form>
       </div>
 
-      {props.report && <ReportCard report={props.report} />}
     </section>
+  );
+}
+
+function RadarChart({ dimensions }: { dimensions: ReportDimension[] }) {
+  const size = 320;
+  const cx = size / 2;
+  const cy = size / 2;
+  const maxScore = 10;
+  const levels = [2, 4, 6, 8, 10];
+  const radius = 100;
+  const angleStep = (2 * Math.PI) / dimensions.length;
+  const startAngle = -Math.PI / 2;
+
+  function polarToXY(angle: number, r: number) {
+    return { x: cx + r * Math.cos(angle), y: cy + r * Math.sin(angle) };
+  }
+
+  function polygonPoints(values: number[]) {
+    return values
+      .map((v, i) => {
+        const a = startAngle + i * angleStep;
+        const p = polarToXY(a, (v / maxScore) * radius);
+        return `${p.x},${p.y}`;
+      })
+      .join(" ");
+  }
+
+  return (
+    <div className="radar-chart-wrapper">
+      <svg viewBox={`0 0 ${size} ${size}`} className="radar-chart">
+        {levels.map((l) => (
+          <polygon
+            key={l}
+            points={dimensions
+              .map((_, i) => {
+                const a = startAngle + i * angleStep;
+                const p = polarToXY(a, (l / maxScore) * radius);
+                return `${p.x},${p.y}`;
+              })
+              .join(" ")}
+            className="radar-grid"
+          />
+        ))}
+        {dimensions.map((_, i) => {
+          const a = startAngle + i * angleStep;
+          const p = polarToXY(a, radius);
+          return <line key={i} x1={cx} y1={cy} x2={p.x} y2={p.y} className="radar-axis" />;
+        })}
+        <polygon
+          points={polygonPoints(dimensions.map((d) => d.score))}
+          className="radar-area"
+        />
+        <polygon
+          points={polygonPoints(dimensions.map((d) => d.score))}
+          className="radar-area-stroke"
+        />
+        {dimensions.map((dim, i) => {
+          const a = startAngle + i * angleStep;
+          const labelR = radius + 30;
+          const p = polarToXY(a, labelR);
+          return (
+            <text
+              key={dim.name}
+              x={p.x}
+              y={p.y}
+              className="radar-label"
+              textAnchor="middle"
+              dominantBaseline="central"
+            >
+              {dim.name}
+            </text>
+          );
+        })}
+      </svg>
+    </div>
   );
 }
 
@@ -706,15 +869,16 @@ function ReportCard({ report }: { report: InterviewReport }) {
         <ClipboardCheck size={20} />
         面试评估报告
       </h3>
+      <RadarChart dimensions={report.dimensions} />
       <div className="report-dimensions">
         {report.dimensions.map((dim) => (
           <div className="report-dim" key={dim.name}>
             <div className="report-dim-header">
               <span className="report-dim-name">{dim.name}</span>
-              <span className="report-dim-score">{dim.score}/5</span>
+              <span className="report-dim-score">{dim.score}/10</span>
             </div>
             <div className="score-bar">
-              <div className="score-bar-fill" style={{ width: `${(dim.score / 5) * 100}%` }} />
+              <div className="score-bar-fill" style={{ width: `${(dim.score / 10) * 100}%` }} />
             </div>
             <p className="report-dim-comment">{dim.comment}</p>
           </div>
@@ -846,18 +1010,19 @@ function SettingsView({
         </div>
 
         <div className="setting-block compact">
-          <span className="setting-title">追问轮数</span>
-          <div className="segmented-control">
-            {[3, 5, 8].map((n) => (
-              <button
-                className={(settings.maxRounds ?? 5) === n ? "selected" : ""}
-                key={n}
-                type="button"
-                onClick={() => onChange({ ...settings, maxRounds: n })}
-              >
-                {n} 轮
-              </button>
-            ))}
+          <span className="setting-title">追问轮数：{settings.maxRounds ?? 5} 轮</span>
+          <input
+            className="rounds-slider"
+            type="range"
+            min={2}
+            max={10}
+            step={1}
+            value={settings.maxRounds ?? 5}
+            onChange={(e) => onChange({ ...settings, maxRounds: Number(e.target.value) })}
+          />
+          <div className="slider-labels">
+            <span>2</span>
+            <span>10</span>
           </div>
         </div>
       </div>

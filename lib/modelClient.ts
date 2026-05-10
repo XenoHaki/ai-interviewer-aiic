@@ -17,7 +17,7 @@ type ChatCompletionResponse = {
 const systemPrompt: ModelMessage = {
   role: "system",
   content:
-    "You are a helpful AI assistant for a web project demo. Answer clearly and concisely. If a user message says it is encoded as JSON Unicode escape sequences, interpret those escape sequences as the original user text before answering.",
+    "你是一款计算机保研面试模拟训练系统的后端AI。你的任务是严格按照每轮对话开头的「系统指令」扮演面试考官或出题考官，不得跳出角色。回复使用中文（除非系统指令要求英文）。如果用户消息以Unicode转义编码发送，请先解码再回答。",
 };
 
 function toUnicodeEscapes(value: string) {
