@@ -38,6 +38,8 @@ type Attachment = {
   name: string;
   type: string;
   size: number;
+  content?: string;
+  parsing?: boolean;
 };
 
 type ChatMessage = {
@@ -132,9 +134,12 @@ function pressureLabel(value: PressureLevel) {
 }
 
 function buildContext(settings: InterviewSettings, attachments: Attachment[], currentRound: number = 0) {
-  const attachmentText = attachments.length
-    ? `本轮用户上传了材料：${attachments.map((file) => file.name).join("、")}。如果无法直接读取文件内容，请提醒用户粘贴关键片段。`
-    : "本轮用户未上传附件。";
+  const filesWithContent = attachments.filter((f) => f.content && f.content.trim());
+  const attachmentText = filesWithContent.length
+    ? `用户上传了以下材料，请据此深入追问：\n${filesWithContent.map((f) => `【${f.name}】\n${f.content!.slice(0, 6000)}`).join("\n\n")}`
+    : attachments.length
+      ? `本轮用户上传了材料：${attachments.map((file) => file.name).join("、")}。文件内容未能解析，请提醒用户粘贴关键片段。`
+      : "本轮用户未上传附件。";
   const maxR = settings.maxRounds ?? 5;
   const wrapUpInstruction = currentRound >= maxR - 1
     ? `\n【重要】这是最后一轮追问（第${currentRound + 1}/${maxR}轮）。请在本次回复中：先简短点评用户回答，然后给出本轮面试的总结和改进建议，结束面试。`
@@ -239,9 +244,10 @@ export function InterviewApp() {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
+  const isParsing = attachments.some((a) => a.parsing);
   const canSend = useMemo(
-    () => (input.trim().length > 0 || attachments.length > 0) && !isSending,
-    [attachments.length, input, isSending],
+    () => (input.trim().length > 0 || attachments.length > 0) && !isSending && !isParsing,
+    [attachments.length, input, isSending, isParsing],
   );
 
   useEffect(() => {
@@ -292,17 +298,36 @@ export function InterviewApp() {
     }
   }, [settings]);
 
-  function addFiles(fileList: FileList | File[]) {
-    const nextFiles = Array.from(fileList)
-      .slice(0, 5)
-      .map((file) => ({
-        id: createId(),
-        name: file.name,
-        type: file.type || "unknown",
-        size: file.size,
-      }));
+  async function addFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList).slice(0, 5);
+    const newAttachments: Attachment[] = files.map((file) => ({
+      id: createId(),
+      name: file.name,
+      type: file.type || "unknown",
+      size: file.size,
+      parsing: true,
+    }));
 
-    setAttachments((current) => [...current, ...nextFiles].slice(0, 8));
+    setAttachments((current) => [...current, ...newAttachments].slice(0, 8));
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const attachId = newAttachments[i].id;
+      try {
+        const formData = new FormData();
+        formData.append("file", file);
+        const res = await fetch("/api/parse-file", { method: "POST", body: formData });
+        const data = await res.json();
+        const text = data.text || data.error || "";
+        setAttachments((current) =>
+          current.map((a) => a.id === attachId ? { ...a, content: text, parsing: false } : a)
+        );
+      } catch {
+        setAttachments((current) =>
+          current.map((a) => a.id === attachId ? { ...a, content: "[文件解析失败]", parsing: false } : a)
+        );
+      }
+    }
   }
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
@@ -451,9 +476,12 @@ export function InterviewApp() {
     if (!canSend) return;
 
     const nextText = input.trim() || "请根据我上传的材料开始一轮保研模拟面试。";
-    const attachmentPrompt = attachments.length
-      ? `\n\n附件清单：${attachments.map((file) => `${file.name}（${formatBytes(file.size)}）`).join("；")}`
-      : "";
+    const filesWithContent = attachments.filter((f) => f.content && f.content.trim());
+    const attachmentPrompt = filesWithContent.length
+      ? `\n\n【用户上传材料内容】\n${filesWithContent.map((f) => `===== ${f.name} =====\n${f.content!.slice(0, 6000)}`).join("\n\n")}`
+      : attachments.length
+        ? `\n\n附件清单：${attachments.map((file) => `${file.name}（${formatBytes(file.size)}）`).join("；")}`
+        : "";
     const userMessage: ChatMessage = {
       id: createId(),
       role: "user",
@@ -487,10 +515,10 @@ export function InterviewApp() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: [
-              { role: "user", content: buildContext(settings, attachments, nextMessages.filter(m => m.role === "user").length) },
-              ...nextMessages.map(({ role, content }) => ({
+              { role: "system", content: buildContext(settings, attachments, nextMessages.filter(m => m.role === "user").length) },
+              ...nextMessages.map(({ role, content }, idx) => ({
                 role,
-                content: role === "user" ? `${content}${attachmentPrompt}` : content,
+                content: (role === "user" && idx === nextMessages.length - 1) ? `${content}${attachmentPrompt}` : content,
               })),
             ],
           }),
@@ -582,7 +610,7 @@ export function InterviewApp() {
       </aside>
 
       <main className="main-panel">
-        {activePage === "home" && <HomeView onStart={() => setActivePage("training")} />}
+        {activePage === "home" && <HomeView onStart={() => setActivePage("training")} user={user} onAuthClick={() => setShowAuthModal(true)} />}
         {activePage === "training" && (
           <TrainingView
             attachments={attachments}
@@ -605,9 +633,11 @@ export function InterviewApp() {
             onToggleDrag={setIsDragging}
             report={report}
             userMessageCount={userMessageCount}
+            user={user}
+            onAuthClick={() => setShowAuthModal(true)}
           />
         )}
-        {activePage === "settings" && <SettingsView settings={settings} onChange={setSettings} />}
+        {activePage === "settings" && <SettingsView settings={settings} onChange={setSettings} user={user} onAuthClick={() => setShowAuthModal(true)} />}
         {activePage === "records" && (
           <RecordsView
             records={records}
@@ -623,23 +653,11 @@ export function InterviewApp() {
               if (currentRecordId === id) setCurrentRecordId(null);
               fetch(`/api/records/${id}`, { method: "DELETE" }).catch(() => {});
             }}
+            user={user}
+            onAuthClick={() => setShowAuthModal(true)}
           />
         )}
       </main>
-
-      <div className="top-right-auth">
-        {user ? (
-          <button className="auth-user-btn" type="button" onClick={() => setShowAuthModal(true)}>
-            <User size={16} />
-            <span>{user.username}</span>
-          </button>
-        ) : (
-          <button className="auth-login-btn" type="button" onClick={() => setShowAuthModal(true)}>
-            <LogIn size={16} />
-            <span>登录</span>
-          </button>
-        )}
-      </div>
 
       {showAuthModal && (
         <div className="auth-modal-overlay" onClick={() => setShowAuthModal(false)}>
@@ -675,9 +693,14 @@ export function InterviewApp() {
   );
 }
 
-function HomeView({ onStart }: { onStart: () => void }) {
+function HomeView({ onStart, user, onAuthClick }: { onStart: () => void; user: AuthUser | null; onAuthClick: () => void }) {
   return (
     <section className="home-view">
+      <div className="home-top-auth">
+        <button className="ghost-action" type="button" onClick={onAuthClick}>
+          {user ? <><User size={17} />{user.username}</> : <><LogIn size={17} />登录</>}
+        </button>
+      </div>
       <div className="hero-background-slot" aria-hidden="true" />
       <div className="hero-center">
         <p className="eyebrow">Accelerate, Accurate, Accompany</p>
@@ -735,6 +758,8 @@ type TrainingViewProps = {
   onToggleDrag: (value: boolean) => void;
   report: InterviewReport | null;
   userMessageCount: number;
+  user: AuthUser | null;
+  onAuthClick: () => void;
 };
 
 function TrainingView(props: TrainingViewProps) {
@@ -780,6 +805,9 @@ function TrainingView(props: TrainingViewProps) {
               {props.isGeneratingReport ? "生成中..." : "生成报告"}
             </button>
           )}
+          <button className="ghost-action" type="button" onClick={props.onAuthClick}>
+            {props.user ? <><User size={17} />{props.user.username}</> : <><LogIn size={17} />登录</>}
+          </button>
         </div>
       </header>
 
@@ -847,8 +875,10 @@ function TrainingView(props: TrainingViewProps) {
             <div className="pending-files">
               {props.attachments.map((file) => (
                 <span className="file-chip" key={file.id}>
-                  {file.type.startsWith("image") ? <ImageIcon size={14} /> : <FileText size={14} />}
+                  {file.parsing ? <Loader2 size={14} className="spin" /> : file.type.startsWith("image") ? <ImageIcon size={14} /> : <FileText size={14} />}
                   {file.name}
+                  {file.parsing && <span style={{ fontSize: 11, opacity: 0.6 }}>解析中…</span>}
+                  {!file.parsing && file.content && <span style={{ fontSize: 11, opacity: 0.6 }}>✓ 已解析</span>}
                   <button type="button" onClick={() => props.onRemoveAttachment(file.id)} title="移除">
                     <X size={13} />
                   </button>
@@ -1007,9 +1037,13 @@ function ReportCard({ report }: { report: InterviewReport }) {
 function SettingsView({
   settings,
   onChange,
+  user,
+  onAuthClick,
 }: {
   settings: InterviewSettings;
   onChange: (settings: InterviewSettings) => void;
+  user: AuthUser | null;
+  onAuthClick: () => void;
 }) {
   return (
     <section className="settings-view">
@@ -1018,6 +1052,9 @@ function SettingsView({
           <p className="eyebrow">Interviewer Profile</p>
           <h2>面试官属性</h2>
         </div>
+        <button className="ghost-action" type="button" onClick={onAuthClick}>
+          {user ? <><User size={17} />{user.username}</> : <><LogIn size={17} />登录</>}
+        </button>
       </header>
 
       <div className="settings-grid">
@@ -1143,11 +1180,15 @@ function RecordsView({
   onLoad,
   onNew,
   onDelete,
+  user,
+  onAuthClick,
 }: {
   records: InterviewRecord[];
   onLoad: (record: InterviewRecord) => void;
   onNew: () => void;
   onDelete: (id: string) => void;
+  user: AuthUser | null;
+  onAuthClick: () => void;
 }) {
   return (
     <section className="records-view">
@@ -1156,9 +1197,14 @@ function RecordsView({
           <p className="eyebrow">Interview History</p>
           <h2>面试记录</h2>
         </div>
-        <button className="ghost-action" type="button" onClick={onNew}>
-          新建面试
-        </button>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button className="ghost-action" type="button" onClick={onNew}>
+            新建面试
+          </button>
+          <button className="ghost-action" type="button" onClick={onAuthClick}>
+            {user ? <><User size={17} />{user.username}</> : <><LogIn size={17} />登录</>}
+          </button>
+        </div>
       </header>
 
       <div className="record-list">

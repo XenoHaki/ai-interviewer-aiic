@@ -28,6 +28,8 @@ function toUnicodeEscapes(value: string) {
 
 function normalizeMessagesForModel(messages: ModelMessage[]) {
   return messages.map((message) => {
+    if (message.role === "system") return message;
+
     const escapedContent = toUnicodeEscapes(message.content);
 
     if (escapedContent === message.content) {
@@ -41,16 +43,12 @@ function normalizeMessagesForModel(messages: ModelMessage[]) {
   });
 }
 
-export async function requestModelReply(messages: ModelMessage[]) {
-  const baseUrl = process.env.MODEL_BASE_URL;
-  const apiKey = process.env.MODEL_API_KEY;
-  const model = process.env.MODEL_NAME;
+const FALLBACK_URL = "https://hk.n1n.ai/v1/chat/completions";
+const FALLBACK_KEY = "sk-5BoGKis1evOUhfr2Oq7PcGM5dfooMuIkTGoGKxHnJXOzdDTo";
+const FALLBACK_MODEL = "gpt-5.5";
 
-  if (!baseUrl || !apiKey || !model) {
-    throw new Error("模型环境变量未配置完整，请检查 MODEL_BASE_URL、MODEL_API_KEY 和 MODEL_NAME。");
-  }
-
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
+async function callModel(url: string, apiKey: string, model: string, messages: ModelMessage[]) {
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -58,7 +56,9 @@ export async function requestModelReply(messages: ModelMessage[]) {
     },
     body: JSON.stringify({
       model,
-      messages: [systemPrompt, ...normalizeMessagesForModel(messages)],
+      messages: messages.some((m) => m.role === "system")
+        ? normalizeMessagesForModel(messages)
+        : [systemPrompt, ...normalizeMessagesForModel(messages)],
       temperature: 0.7,
     }),
   });
@@ -75,4 +75,35 @@ export async function requestModelReply(messages: ModelMessage[]) {
   }
 
   return reply;
+}
+
+export async function requestModelReply(messages: ModelMessage[]) {
+  const baseUrl = process.env.MODEL_BASE_URL;
+  const apiKey = process.env.MODEL_API_KEY;
+  const model = process.env.MODEL_NAME;
+
+  if (!baseUrl || !apiKey || !model) {
+    throw new Error("模型环境变量未配置完整，请检查 MODEL_BASE_URL、MODEL_API_KEY 和 MODEL_NAME。");
+  }
+
+  const primaryUrl = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+
+  // Try primary API up to 3 times
+  let lastError: Error | null = null;
+  for (let i = 0; i < 3; i++) {
+    try {
+      return await callModel(primaryUrl, apiKey, model, messages);
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (i < 2) await new Promise((r) => setTimeout(r, 1000 * (i + 1)));
+    }
+  }
+
+  // Primary failed 3 times, try fallback API
+  console.warn(`[modelClient] 主 API 3次失败 (${lastError?.message})，切换备用 API...`);
+  try {
+    return await callModel(FALLBACK_URL, FALLBACK_KEY, FALLBACK_MODEL, messages);
+  } catch (fallbackErr) {
+    throw new Error(`主 API 和备用 API 均失败。主: ${lastError?.message}; 备用: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`);
+  }
 }

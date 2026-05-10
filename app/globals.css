@@ -293,6 +293,13 @@ button {
   overflow: hidden;
 }
 
+.home-top-auth {
+  position: absolute;
+  top: 20px;
+  right: 24px;
+  z-index: 10;
+}
+
 .hero-background-slot {
   position: absolute;
   inset: 0;
@@ -464,13 +471,17 @@ h2 {
 }
 
 .ghost-action {
-  border: 1px solid var(--border);
+  border: 1.5px solid #D1D5DB;
   background: var(--surface);
   color: var(--text);
   font-weight: 600;
   font-size: 14px;
   transition: all 0.15s ease;
   border-radius: var(--radius);
+}
+
+.app-layout.theme-dark .ghost-action {
+  border-color: var(--border);
 }
 
 .ghost-action:hover {
@@ -1470,35 +1481,6 @@ h2 {
   }
 }
 
-/* Top-right auth button */
-.top-right-auth {
-  position: fixed;
-  top: 16px;
-  right: 20px;
-  z-index: 100;
-}
-
-.auth-login-btn,
-.auth-user-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  background: var(--surface);
-  color: var(--text);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
-}
-
-.auth-login-btn:hover,
-.auth-user-btn:hover {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.08);
-}
 
 /* Auth modal */
 .auth-modal-overlay {
@@ -1516,9 +1498,13 @@ h2 {
   max-width: 380px;
   padding: 32px 28px;
   border-radius: 20px;
-  background: var(--surface);
+  background: #ffffff;
   border: 1px solid var(--border);
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.2);
+}
+
+.app-layout.theme-dark .auth-modal {
+  background: #18181B;
 }
 
 .auth-modal-logged {
@@ -1556,13 +1542,18 @@ h2 {
 .login-field input {
   width: 100%;
   padding: 11px 14px;
-  border: 1.5px solid var(--border);
+  border: 1.5px solid #D1D5DB;
   border-radius: var(--radius, 12px);
-  background: var(--control);
+  background: #ffffff;
   color: var(--text);
   font-size: 14px;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.app-layout.theme-dark .login-field input {
+  background: #27272A;
+  border-color: #3F3F46;
 }
 
 .login-field input:focus {

@@ -6,8 +6,8 @@ type IncomingMessage = {
   content?: unknown;
 };
 
-function isValidRole(role: unknown): role is "user" | "assistant" {
-  return role === "user" || role === "assistant";
+function isValidRole(role: unknown): role is "user" | "assistant" | "system" {
+  return role === "user" || role === "assistant" || role === "system";
 }
 
 export async function POST(request: Request) {
@@ -21,8 +21,8 @@ export async function POST(request: Request) {
     const messages = body.messages
       .filter((message) => isValidRole(message.role) && typeof message.content === "string")
       .map((message) => ({
-        role: message.role as "user" | "assistant",
-        content: (message.content as string).slice(0, 8000),
+        role: message.role as "user" | "assistant" | "system",
+        content: (message.content as string).slice(0, 20000),
       }));
 
     if (messages.length === 0) {
