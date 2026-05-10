@@ -558,8 +558,9 @@ h2 {
 .message-row.from-user .message-bubble {
   grid-column: 1;
   justify-self: end;
-  background: var(--primary);
-  color: #ffffff;
+  background: var(--primary) !important;
+  color: #ffffff !important;
+  border-color: var(--primary);
 }
 
 .avatar {
