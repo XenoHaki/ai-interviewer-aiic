@@ -6,6 +6,18 @@ Build a simple web application that includes at least one chat window where user
 
 The client requirements are not finalized yet, so the project should stay lightweight, modular, and easy to change.
 
+todo：
+
+3h rest
+
+10~12 搭建网站框架，连API
+
+13~18 添加具体功能，设计prompt，UI美术 
+
+19~21 测试+调试
+
+22~24 demo视频+文档
+
 ## Confirm With Client
 
 - Target users and usage scenario

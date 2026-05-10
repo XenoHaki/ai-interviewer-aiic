@@ -387,13 +387,14 @@ h2 {
 }
 
 .primary-action {
-  border: 0;
+  border: 2px solid #111827;
   background: var(--text);
   color: var(--background);
   font-weight: 700;
   font-size: 15px;
   transition: all 0.2s ease;
-  border-radius: var(--radius);
+  border-radius: 999px;
+  padding: 0 24px;
 }
 
 .primary-action:hover {

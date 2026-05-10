@@ -92,7 +92,7 @@ const initialMessages: ChatMessage[] = [
   },
 ];
 
-const quizSubjects = ["数据结构", "机器学习", "操作系统", "计算机网络", "线性代数", "概率论"];
+const quizSubjects = ["数据结构", "机器学习", "操作系统", "计算机网络", "线性代数", "概率论", "高等数学", "计算机系统导论", "算法设计与分析"];
 
 const defaultSettings: InterviewSettings = {
   pressure: "normal",
@@ -129,10 +129,11 @@ function buildContext(settings: InterviewSettings, attachments: Attachment[]) {
     : "本轮用户未上传附件。";
 
   if ((settings.mode ?? "project") === "quiz") {
+    const difficultyLabel = { friendly: "简单", normal: "普通", strict: "困难" }[settings.pressure];
     return [
-      `你是计算机保研面试考官，当前进行专业课快问快答环节。科目：${settings.quizSubject ?? "数据结构"}。压力程度=${pressureLabel(settings.pressure)}。`,
+      `你是计算机保研面试考官，当前进行专业课快问快答环节。科目：${settings.quizSubject ?? "数据结构"}。难度=${difficultyLabel}。`,
       "请随机挑选一道该科目的高频保研面试题提问。",
-      "用户回答后给出简短点评（对/错/不完整）+ 参考答案要点 + 下一题。",
+      "用户回答后给出简短点评（10分制分数，形如x/10）+ 参考答案要点 + 下一题。",
       "保持节奏紧凑，每次只问一题。如果用户说'下一题'或'换一题'，直接出新题。",
     ].join("\n");
   }
@@ -243,12 +244,20 @@ export function InterviewApp() {
   }
 
   function saveRecord(nextMessages: ChatMessage[]) {
-    const firstUser = nextMessages.find((message) => message.role === "user");
     const latestAssistant = [...nextMessages].reverse().find((message) => message.role === "assistant");
+    const now = new Date();
+    const ts = `${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}-${String(now.getHours()).padStart(2, "0")}${String(now.getMinutes()).padStart(2, "0")}`;
+    const isQuiz = (settings.mode ?? "project") === "quiz";
+    const modeLabel = isQuiz ? "专业课快问" : "保研面试";
+    const levelLabel = isQuiz
+      ? { friendly: "简单", normal: "普通", strict: "困难" }[settings.pressure]
+      : pressureLabel(settings.pressure);
+    const subjectLabel = isQuiz ? (settings.quizSubject ?? "数据结构") : settings.direction;
+    const title = `${modeLabel}-${levelLabel}-${subjectLabel}-${ts}`;
     const record: InterviewRecord = {
       id: createId(),
-      title: (firstUser?.content || "未命名面试").slice(0, 24),
-      createdAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+      title,
+      createdAt: now.toLocaleString("zh-CN", { hour12: false }),
       summary: latestAssistant?.content.slice(0, 90) || "等待面试官反馈",
       messages: nextMessages,
     };
@@ -675,7 +684,7 @@ function TrainingView(props: TrainingViewProps) {
                   event.currentTarget.form?.requestSubmit();
                 }
               }}
-              placeholder="输入回答或粘贴项目经历，按 Enter 发送"
+              placeholder="请输入回答，按Enter发送"
               rows={1}
             />
             <button className="send-button" type="submit" disabled={!props.canSend} aria-label="发送消息" title="发送消息">
@@ -746,7 +755,7 @@ function SettingsView({
             <span>训练模式</span>
           </div>
           <div className="segmented-control">
-            {([["project", "项目面试"], ["quiz", "专业课快问"]] as [TrainingMode, string][]).map(([mode, label]) => (
+            {([["project", "保研面试"], ["quiz", "专业课快问"]] as [TrainingMode, string][]).map(([mode, label]) => (
               <button
                 className={(settings.mode ?? "project") === mode ? "selected" : ""}
                 key={mode}
@@ -776,19 +785,24 @@ function SettingsView({
         <div className="setting-block">
           <div className="setting-title">
             <Gauge size={18} />
-            <span>压力程度</span>
+            <span>{(settings.mode ?? "project") === "quiz" ? "难度" : "压力程度"}</span>
           </div>
           <div className="segmented-control">
-            {(["friendly", "normal", "strict"] as PressureLevel[]).map((level) => (
-              <button
-                className={settings.pressure === level ? "selected" : ""}
-                key={level}
-                type="button"
-                onClick={() => onChange({ ...settings, pressure: level })}
-              >
-                {pressureLabel(level)}
-              </button>
-            ))}
+            {(["friendly", "normal", "strict"] as PressureLevel[]).map((level) => {
+              const label = (settings.mode ?? "project") === "quiz"
+                ? { friendly: "简单", normal: "普通", strict: "困难" }[level]
+                : pressureLabel(level);
+              return (
+                <button
+                  className={settings.pressure === level ? "selected" : ""}
+                  key={level}
+                  type="button"
+                  onClick={() => onChange({ ...settings, pressure: level })}
+                >
+                  {label}
+                </button>
+              );
+            })}
           </div>
         </div>
 
@@ -880,7 +894,6 @@ function RecordsView({
               <span className="record-main">
                 <strong>{record.title}</strong>
                 <small>{record.createdAt}</small>
-                <span>{record.summary}</span>
               </span>
               <ChevronRight size={18} aria-hidden="true" />
             </button>
